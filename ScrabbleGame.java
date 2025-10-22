@@ -18,6 +18,10 @@ import java.util.Scanner;
  * The score is displayed after a valid word is found.
  *
  * See comments in code for details of the scoring logic.
+ *
+ * --- IMPROVEMENT: EASIER WORD FORMATION ---
+ * The random letter generator now biases toward vowels, making it easier to form words
+ * with just 4 letters. See the new pickRandomLetters method for details.
  */
 public class ScrabbleGame {
 
@@ -73,7 +77,9 @@ public class ScrabbleGame {
          * binary search over the sorted `dictionary` to determine whether the
          * word is present.
          */
-        final char[] letters = pickRandomLetters(4);
+    // --- IMPROVEMENT: EASIER WORD FORMATION ---
+    // Use a vowel-biased random letter generator to make forming words easier.
+    final char[] letters = pickRandomLetters(4);
         System.out.printf("Your letters are: %c %c %c %c%n", letters[0], letters[1], letters[2], letters[3]);
 
         // Prompt the user for a single word (case-insensitive)
@@ -126,11 +132,26 @@ public class ScrabbleGame {
         return score;
     }
 
-    // choose n random uppercase letters A-Z
+    /**
+     * Improvement: pick n random uppercase letters, with a higher chance of vowels.
+     * This makes it easier for the user to form a word from just 4 letters.
+     * About 50% of the letters will be vowels (A, E, I, O, U).
+     */
     private static char[] pickRandomLetters(int n) {
         Random r = new Random();
+        char[] vowels = {'A', 'E', 'I', 'O', 'U'};
+        char[] consonants = {
+            'B','C','D','F','G','H','J','K','L','M','N','P','Q','R','S','T','V','W','X','Y','Z'
+        };
         char[] out = new char[n];
-        for (int i = 0; i < n; i++) out[i] = (char) ('A' + r.nextInt(26));
+        for (int i = 0; i < n; i++) {
+            // 50% chance to pick a vowel, 50% consonant
+            if (r.nextBoolean()) {
+                out[i] = vowels[r.nextInt(vowels.length)];
+            } else {
+                out[i] = consonants[r.nextInt(consonants.length)];
+            }
+        }
         return out;
     }
 
