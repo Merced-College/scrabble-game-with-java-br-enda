@@ -1,200 +1,236 @@
 import java.io.File;
 import java.io.FileNotFoundException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Random;
-import java.util.Scanner;
+import java.util.*;
+import java.util.regex.Pattern;
 
 /**
- * Simplified ScrabbleGame: loads a dictionary file (wordsWithDefs.txt) where each line
- * contains a word and optionally a definition separated by a tab or two+ spaces.
- * Prints the first 100 entries and a count. Kept intentionally small and error-free.
+ * Mini Scrabble Game (4-letter version)
+ * -------------------------------------
+ * - Loads words and definitions from wordsWithDefs.txt
+ * - Gives 4 random letters (more vowels)
+ * - You type words you can make with those letters
+ * - Uses a hand-written binary search to check if the word is valid
  *
- * --- IMPROVEMENT: WORD SCORING SYSTEM ---
- * This version awards points to the user for valid words based on word length:
- * - 1 point per letter in the word
- * - Bonus: +5 points for words of 6+ letters, +10 for 8+ letters
- * The score is displayed after a valid word is found.
+ * --------------------------------------------------------------
+ * IMPROVEMENT ADDED: GAME POINTS SYSTEM 🏆
+ * --------------------------------------------------------------
+ * - Each valid word now gives points based on word length.
+ * - 1 point per letter in the word.
+ * - BONUS: +3 points if the word uses all 4 letters.
+ * - Total score is shown after every correct word.
+ * - Added calculateScore() method and scoring print statements.
+ * --------------------------------------------------------------
  *
- * See comments in code for details of the scoring logic.
- *
- * --- IMPROVEMENT: EASIER WORD FORMATION ---
- * The random letter generator now biases toward vowels, making it easier to form words
- * with just 4 letters. See the new pickRandomLetters method for details.
+ * Commands: new, rules, quit
  */
 public class ScrabbleGame {
 
-    // in-memory dictionary: loaded from wordsWithDefs.txt and kept sorted
-    private static List<Word> dictionary = new ArrayList<>();
+    // Game settings
+    private static final int LETTER_COUNT = 4;
+
+    // Sorted dictionary for binary search
+    private static final List<Word> DICTIONARY = new ArrayList<>();
+    private static final Random RNG = new Random();
+
+    // Letter pools (vowel bias)
+    private static final char[] VOWELS = {'A', 'E', 'I', 'O', 'U'};
+    private static final char[] CONSONANTS = {
+        'B','C','D','F','G','H','J','K','L','M','N','P','Q','R','S','T','V','W','X','Y','Z'
+    };
 
     public static void main(String[] args) {
-        // Attempt to read the dictionary file from the working directory.
-        File f = new File("wordsWithDefs.txt");
-        if (!f.exists()) {
-            System.err.println("Dictionary file wordsWithDefs.txt not found in working directory.");
-            System.err.println("Create a wordsWithDefs.txt file or place one in the working directory.");
+        if (!loadDictionary("wordsWithDefs.txt")) {
+            System.err.println("Could not find wordsWithDefs.txt in this folder.");
             return;
         }
 
-        // Read file into Word objects
-        try (Scanner in = new Scanner(f)) {
-            while (in.hasNextLine()) {
-                String line = in.nextLine();
-                if (line == null) continue;
-                line = line.trim();
+        System.out.println("\nDictionary loaded successfully!\n");
+        printRules();
+
+        char[] letters = pickRandomLetters(LETTER_COUNT);
+
+        // --- IMPROVEMENT FEATURE: total game points tracker ---
+        int totalScore = 0;
+
+        try (Scanner stdin = new Scanner(System.in)) {
+            boolean running = true;
+            while (running) {
+                System.out.println("\nYour letters: " + formatLetters(letters));
+                System.out.print("Enter a word (or 'new', 'rules', 'quit'): ");
+                String line = stdin.hasNextLine() ? stdin.nextLine().trim() : "";
                 if (line.isEmpty()) continue;
 
-                String word = null;
-                String def = "";
+                String cmd = line;
 
+                // Quit game
+                if (cmd.equalsIgnoreCase("quit") || cmd.equalsIgnoreCase("exit")) {
+                    System.out.println("Goodbye! Final score: " + totalScore);
+                    running = false;
+                    break;
+                }
+
+                // Show rules
+                if (cmd.equalsIgnoreCase("rules")) {
+                    printRules();
+                    continue;
+                }
+
+                // Get new letters
+                if (cmd.equalsIgnoreCase("new")) {
+                    letters = pickRandomLetters(LETTER_COUNT);
+                    System.out.println("New letters ready!");
+                    continue;
+                }
+
+                // Check letter validity
+                if (!usesOnlyLetters(cmd, letters)) {
+                    System.out.println("'" + cmd + "' can't be made with those letters.");
+                    continue;
+                }
+
+                // Hand-written binary search
+                int idx = binarySearchWord(DICTIONARY, cmd);
+                if (idx >= 0) {
+                    Word found = DICTIONARY.get(idx);
+                    System.out.println("✅ Valid word: " + found.getWord());
+                    if (!found.getDefinition().isEmpty()) {
+                        System.out.println("Definition: " + found.getDefinition());
+                    }
+
+                    // --- IMPROVEMENT FEATURE: Scoring system applied here ---
+                    int score = calculateScore(found.getWord());
+                    totalScore += score;
+                    System.out.println("You earned " + score + " points! Total: " + totalScore);
+                    // -------------------------------------------------------
+
+                    System.out.print("Type 'new' for new letters, or press Enter to keep the same ones: ");
+                    String after = stdin.hasNextLine() ? stdin.nextLine().trim() : "";
+                    if (after.equalsIgnoreCase("new")) {
+                        letters = pickRandomLetters(LETTER_COUNT);
+                        System.out.println("New letters ready!");
+                    }
+                } else {
+                    System.out.println("❌ '" + cmd + "' not found in dictionary.");
+                }
+            }
+        }
+    }
+
+    // Load dictionary into memory
+    private static boolean loadDictionary(String fileName) {
+        File f = new File(fileName);
+        if (!f.exists()) return false;
+
+        Set<String> seen = new HashSet<>();
+        Pattern split = Pattern.compile("\\s{2,}");
+
+        try (Scanner in = new Scanner(f)) {
+            while (in.hasNextLine()) {
+                String line = in.nextLine().trim();
+                if (line.isEmpty()) continue;
+
+                String word, def = "";
                 int tab = line.indexOf('\t');
                 if (tab >= 0) {
                     word = line.substring(0, tab).trim();
                     def = line.substring(tab + 1).trim();
                 } else {
-                    String[] parts = line.split("\\s{2,}", 2);
+                    String[] parts = split.split(line, 2);
                     word = parts[0].trim();
                     if (parts.length == 2) def = parts[1].trim();
                 }
 
-                if (word != null && !word.isEmpty()) dictionary.add(new Word(word, def));
+                if (word.isEmpty()) continue;
+                if (seen.add(word.toLowerCase())) DICTIONARY.add(new Word(word, def));
             }
         } catch (FileNotFoundException e) {
-            System.out.println("File not found: " + e.getMessage());
-            return;
+            System.err.println("Error reading file: " + e.getMessage());
+            return false;
         }
 
-        // Sort the dictionary so we can binary-search it later.
-        Collections.sort(dictionary);
-
-        System.out.println("Loaded " + dictionary.size() + " dictionary entries.");
-
-        /*
-         * Pick 4 random uppercase letters and prompt the user to form a word.
-         * The candidate is checked to ensure it uses only the provided letters
-         * (counts respected). If it passes that test we run a handwritten
-         * binary search over the sorted `dictionary` to determine whether the
-         * word is present.
-         */
-    // --- IMPROVEMENT: EASIER WORD FORMATION ---
-    // Use a vowel-biased random letter generator to make forming words easier.
-    final char[] letters = pickRandomLetters(4);
-        System.out.printf("Your letters are: %c %c %c %c%n", letters[0], letters[1], letters[2], letters[3]);
-
-        // Prompt the user for a single word (case-insensitive)
-        try (Scanner stdin = new Scanner(System.in)) {
-            System.out.print("Enter a word you can make from those letters: ");
-            String candidate = stdin.hasNextLine() ? stdin.nextLine().trim() : "";
-            if (candidate.isEmpty()) {
-                System.out.println("No word entered. Exiting.");
-                return;
-            }
-
-            // verify candidate uses only letters from the pool
-            if (!usesOnlyLetters(candidate, letters)) {
-                System.out.println("The word '" + candidate + "' cannot be formed from the given letters.");
-                return;
-            }
-
-            // run a handwritten binary search
-            final int idx = binarySearchWord(dictionary, candidate);
-            if (idx >= 0) {
-                final Word found = dictionary.get(idx);
-                System.out.println("Valid word found: " + found.getWord());
-                final String def = found.getDefinition();
-                if (def != null && !def.isEmpty()) System.out.println("Definition: " + def);
-
-                // --- IMPROVEMENT: SCORING SYSTEM ---
-                // Award points for valid words based on their length.
-                int score = calculateScore(found.getWord());
-                System.out.println("You scored " + score + " points for this word!");
-            } else {
-                System.out.println("Word '" + candidate + "' not found in dictionary.");
-            }
-        }
+        Collections.sort(DICTIONARY);
+        System.out.println("Loaded " + DICTIONARY.size() + " words.");
+        return true;
     }
 
     /**
-     * Improvement: Calculate score for a word based on its length.
+     * --- IMPROVEMENT FEATURE ---
+     * Calculates the player’s score for a valid word:
      * - 1 point per letter
-     * - Bonus: +5 points for words of 6+ letters, +10 for 8+ letters
-     * @param word the word to score
-     * @return total score
+     * - +3 bonus if all 4 letters are used
      */
     private static int calculateScore(String word) {
         if (word == null) return 0;
-        int len = word.trim().length();
-        int score = len; // 1 point per letter
-        // Bonus for longer words
-        if (len >= 8) score += 10;
-        else if (len >= 6) score += 5;
+        int len = 0;
+        for (char c : word.toCharArray()) if (Character.isLetter(c)) len++;
+        int score = len;
+        if (len == LETTER_COUNT) score += 3; // full-use bonus
         return score;
     }
 
-    /**
-     * Improvement: pick n random uppercase letters, with a higher chance of vowels.
-     * This makes it easier for the user to form a word from just 4 letters.
-     * About 50% of the letters will be vowels (A, E, I, O, U).
-     */
+    // Generate random letters (50% vowels)
     private static char[] pickRandomLetters(int n) {
-        Random r = new Random();
-        char[] vowels = {'A', 'E', 'I', 'O', 'U'};
-        char[] consonants = {
-            'B','C','D','F','G','H','J','K','L','M','N','P','Q','R','S','T','V','W','X','Y','Z'
-        };
         char[] out = new char[n];
         for (int i = 0; i < n; i++) {
-            // 50% chance to pick a vowel, 50% consonant
-            if (r.nextBoolean()) {
-                out[i] = vowels[r.nextInt(vowels.length)];
-            } else {
-                out[i] = consonants[r.nextInt(consonants.length)];
-            }
+            out[i] = RNG.nextBoolean()
+                    ? VOWELS[RNG.nextInt(VOWELS.length)]
+                    : CONSONANTS[RNG.nextInt(CONSONANTS.length)];
         }
         return out;
     }
 
-    // verify candidate uses only letters from pool (counts respected), case-insensitive
+    private static String formatLetters(char[] letters) {
+        StringBuilder sb = new StringBuilder();
+        for (char c : letters) sb.append(c).append(' ');
+        return sb.toString().trim();
+    }
+
+    // Check if user word can be made from current letters
     private static boolean usesOnlyLetters(String candidate, char[] pool) {
-        int[] cnt = new int[26];
-        for (char c : pool) {
-            if (Character.isLetter(c)) cnt[Character.toUpperCase(c) - 'A']++;
-        }
-        for (char ch : candidate.toCharArray()) {
-            if (!Character.isLetter(ch)) return false;
-            int idx = Character.toUpperCase(ch) - 'A';
-            if (idx < 0 || idx >= 26) return false;
-            if (cnt[idx] == 0) return false;
-            cnt[idx]--;
+        int[] count = new int[26];
+        for (char c : pool)
+            if (Character.isLetter(c)) count[Character.toUpperCase(c) - 'A']++;
+        for (char c : candidate.toCharArray()) {
+            if (!Character.isLetter(c)) return false;
+            int i = Character.toUpperCase(c) - 'A';
+            if (i < 0 || i >= 26 || count[i] == 0) return false;
+            count[i]--;
         }
         return true;
     }
 
-    // Handwritten binary search over sorted list of Word objects. Case-insensitive compare.
+    // Hand-written binary search
     private static int binarySearchWord(List<Word> list, String target) {
         if (target == null) return -1;
         target = target.trim();
         if (target.isEmpty()) return -1;
-        int lo = 0;
-        int hi = list.size() - 1;
+
+        int lo = 0, hi = list.size() - 1;
         while (lo <= hi) {
             int mid = (lo + hi) >>> 1;
             Word midW = list.get(mid);
-            String midWord = midW == null ? null : midW.getWord();
-            if (midWord == null) {
-                // treat null as less than target
-                lo = mid + 1;
-                continue;
-            }
+            String midWord = (midW == null) ? "" : midW.getWord();
+
             int cmp = midWord.compareToIgnoreCase(target);
             if (cmp == 0) return mid;
-            if (cmp < 0) {
-                lo = mid + 1;
-            } else {
-                hi = mid - 1;
-            }
+            if (cmp < 0) lo = mid + 1; else hi = mid - 1;
         }
         return -1;
+    }
+
+    // Game instructions
+    private static void printRules() {
+        System.out.println("\n--- How to Play (4 Letters) ---");
+        System.out.println("- You’ll get a random set of 4 letters (more vowels to help).");
+        System.out.println("- Make a real English word using only those letters.");
+        System.out.println("- Scoring: 1 point per letter.");
+        System.out.println("- Bonus: +3 points if you use all 4 letters.");
+        System.out.println();
+        System.out.println("Commands:");
+        System.out.println("  new    → new random letters");
+        System.out.println("  rules  → show these instructions again");
+        System.out.println("  quit   → end the game and show your final score");
+        System.out.println();
+        System.out.println("Press Enter (no input) to keep your current letters and try another word.\n");
     }
 }
