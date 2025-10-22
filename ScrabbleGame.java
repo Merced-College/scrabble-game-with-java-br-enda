@@ -9,16 +9,16 @@ import java.util.regex.Pattern;
  * - Loads words and definitions from wordsWithDefs.txt
  * - Gives 4 random letters (more vowels)
  * - You type words you can make with those letters
- * - Uses a hand-written binary search to check if the word is valid
+ * - Uses binary search to check if the word is valid
  *
  * --------------------------------------------------------------
  * IMPROVEMENT ADDED: GAME POINTS SYSTEM 🏆
  * --------------------------------------------------------------
- * - Each valid word now gives points based on word length.
+ * - Each valid word now gives points based on its length.
  * - 1 point per letter in the word.
  * - BONUS: +3 points if the word uses all 4 letters.
  * - Total score is shown after every correct word.
- * - Added calculateScore() method and scoring print statements.
+ * - Added calculateScore() method and score tracker.
  * --------------------------------------------------------------
  *
  * Commands: new, rules, quit
@@ -28,11 +28,11 @@ public class ScrabbleGame {
     // Game settings
     private static final int LETTER_COUNT = 4;
 
-    // Sorted dictionary for binary search
+    // Sorted dictionary list for binary search
     private static final List<Word> DICTIONARY = new ArrayList<>();
     private static final Random RNG = new Random();
 
-    // Letter pools (vowel bias)
+    // Letter pools (more vowels to help form real words)
     private static final char[] VOWELS = {'A', 'E', 'I', 'O', 'U'};
     private static final char[] CONSONANTS = {
         'B','C','D','F','G','H','J','K','L','M','N','P','Q','R','S','T','V','W','X','Y','Z'
@@ -49,7 +49,7 @@ public class ScrabbleGame {
 
         char[] letters = pickRandomLetters(LETTER_COUNT);
 
-        // --- IMPROVEMENT FEATURE: total game points tracker ---
+        // --- IMPROVEMENT FEATURE: Score tracker for the game ---
         int totalScore = 0;
 
         try (Scanner stdin = new Scanner(System.in)) {
@@ -82,13 +82,13 @@ public class ScrabbleGame {
                     continue;
                 }
 
-                // Check letter validity
+                // Check if the word can be made from the given letters
                 if (!usesOnlyLetters(cmd, letters)) {
                     System.out.println("'" + cmd + "' can't be made with those letters.");
                     continue;
                 }
 
-                // Hand-written binary search
+                // Binary search to check if the word exists in dictionary
                 int idx = binarySearchWord(DICTIONARY, cmd);
                 if (idx >= 0) {
                     Word found = DICTIONARY.get(idx);
@@ -97,11 +97,11 @@ public class ScrabbleGame {
                         System.out.println("Definition: " + found.getDefinition());
                     }
 
-                    // --- IMPROVEMENT FEATURE: Scoring system applied here ---
+                    // --- IMPROVEMENT FEATURE: Scoring system used here ---
                     int score = calculateScore(found.getWord());
                     totalScore += score;
                     System.out.println("You earned " + score + " points! Total: " + totalScore);
-                    // -------------------------------------------------------
+                    // ----------------------------------------------------
 
                     System.out.print("Type 'new' for new letters, or press Enter to keep the same ones: ");
                     String after = stdin.hasNextLine() ? stdin.nextLine().trim() : "";
@@ -155,20 +155,20 @@ public class ScrabbleGame {
 
     /**
      * --- IMPROVEMENT FEATURE ---
-     * Calculates the player’s score for a valid word:
+     * Calculates points for a valid word:
      * - 1 point per letter
-     * - +3 bonus if all 4 letters are used
+     * - +3 bonus points if all 4 letters are used
      */
     private static int calculateScore(String word) {
         if (word == null) return 0;
         int len = 0;
         for (char c : word.toCharArray()) if (Character.isLetter(c)) len++;
         int score = len;
-        if (len == LETTER_COUNT) score += 3; // full-use bonus
+        if (len == LETTER_COUNT) score += 3; // bonus for full use of letters
         return score;
     }
 
-    // Generate random letters (50% vowels)
+    // Create random letters (half vowels)
     private static char[] pickRandomLetters(int n) {
         char[] out = new char[n];
         for (int i = 0; i < n; i++) {
@@ -185,7 +185,7 @@ public class ScrabbleGame {
         return sb.toString().trim();
     }
 
-    // Check if user word can be made from current letters
+    // Checks if user word can be made from current letters
     private static boolean usesOnlyLetters(String candidate, char[] pool) {
         int[] count = new int[26];
         for (char c : pool)
@@ -199,7 +199,7 @@ public class ScrabbleGame {
         return true;
     }
 
-    // Hand-written binary search
+    // Binary search through the sorted word list
     private static int binarySearchWord(List<Word> list, String target) {
         if (target == null) return -1;
         target = target.trim();
